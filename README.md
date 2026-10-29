@@ -4,6 +4,10 @@ A logomakr-style logo editor built on [The Noun Project](https://thenounproject.
 
 Built with Astro (SSR, node adapter), Vue, Tailwind v4 and fabric.js.
 
+![Logomaker demo: search, mirror mode, scaling, shape cut-out, text, undo/redo and export](docs/demo.gif)
+
+[Watch the full-quality demo (MP4, 42s)](docs/demo.mp4)
+
 ## Features
 
 - **Search**: Noun Project icon search with Load more. Each result is tagged **SVG** or **PNG**, and an All / SVG / PNG filter narrows the list.
