@@ -8,6 +8,12 @@ Built with Astro (SSR, node adapter), Vue, Tailwind v4 and fabric.js.
 
 [Watch the full-quality demo (MP4, 42s)](docs/demo.mp4)
 
+## Example
+
+[![ShipVipers logo made with Logomaker](docs/example-shipvipers.png)](https://shipvipers.com)
+
+The logo for [ShipVipers](https://shipvipers.com) was built from three icon searches: "gun", "skull" and "mop", using mirror mode for the crossed pairs.
+
 ## Features
 
 - **Search**: Noun Project icon search with Load more. Each result is tagged **SVG** or **PNG**, and an All / SVG / PNG filter narrows the list.
