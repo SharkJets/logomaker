@@ -80,3 +80,27 @@ describe('tnpGet', () => {
     expect(init.headers.Authorization.startsWith('OAuth ')).toBe(true);
   });
 });
+
+describe('tnpGet config and redirects', () => {
+  it('throws server not configured without env and never fetches', async () => {
+    const f = vi.fn();
+    vi.stubGlobal('fetch', f);
+    const k = process.env.THEN_KEY, s = process.env.THEN_SEC;
+    delete process.env.THEN_KEY;
+    delete process.env.THEN_SEC;
+    await expect(tnpGet('/v2/icon', {})).rejects.toThrow('server not configured');
+    expect(f).not.toHaveBeenCalled();
+    if (k) process.env.THEN_KEY = k;
+    if (s) process.env.THEN_SEC = s;
+    vi.unstubAllGlobals();
+  });
+  it('does not follow redirects', async () => {
+    process.env.THEN_KEY = 'k';
+    process.env.THEN_SEC = 's';
+    const f = vi.fn().mockResolvedValue(new Response('', { status: 302 }));
+    vi.stubGlobal('fetch', f);
+    await expect(tnpGet('/v2/icon', {})).rejects.toThrow('upstream 302');
+    expect(f.mock.calls[0][1].redirect).toBe('manual');
+    vi.unstubAllGlobals();
+  });
+});

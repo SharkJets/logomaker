@@ -41,8 +41,9 @@ export function authHeader(
 }
 
 export async function tnpGet(path: string, params: Record<string, string>): Promise<any> {
-  const key = process.env.THEN_KEY ?? '';
-  const secret = process.env.THEN_SEC ?? '';
+  const key = process.env.THEN_KEY;
+  const secret = process.env.THEN_SEC;
+  if (!key || !secret) throw new Error('server not configured');
   const url = TNP_BASE + path;
   const query = Object.keys(params)
     .sort()
@@ -58,6 +59,7 @@ export async function tnpGet(path: string, params: Record<string, string>): Prom
   );
   const res = await fetch(query ? `${url}?${query}` : url, {
     headers: { Authorization: auth },
+    redirect: 'manual',
   });
   if (!res.ok) throw new Error(`upstream ${res.status}`);
   return res.json();
