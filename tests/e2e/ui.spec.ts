@@ -101,6 +101,25 @@ test('test_result_kind_badge', async ({ page }) => {
   await expect(page.getByTestId('kind')).toHaveText(['SVG', 'PNG']);
 });
 
+test('test_kind_filter', async ({ page }) => {
+  await page.route('**/api/search*', (r) => r.fulfill({ json: { icons: [
+    { id: '1', thumb: THUMB, attribution: 'A', svg: true },
+    { id: '2', thumb: THUMB, attribution: 'B', svg: false },
+  ], next: null } }));
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.getByLabel('Search icons').fill('cat');
+  await page.getByLabel('Search icons').press('Enter');
+  const g = page.getByRole('radiogroup', { name: 'Show' });
+  await expect(page.getByTestId('kind')).toHaveCount(2);
+  await g.getByText('SVG', { exact: true }).click();
+  await expect(page.getByTestId('kind')).toHaveText(['SVG']);
+  await g.getByText('PNG', { exact: true }).click();
+  await expect(page.getByTestId('kind')).toHaveText(['PNG']);
+  await g.getByText('All', { exact: true }).click();
+  await expect(page.getByTestId('kind')).toHaveCount(2);
+});
+
 test('test_png_fallback_icon',async ({ page }) => {
   await setup(page, { png: true });
   await addIcon(page);

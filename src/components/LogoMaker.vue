@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import type { Editor } from '../lib/editor';
 
 type Icon = { id: string; thumb: string; attribution: string; svg: boolean };
@@ -8,6 +8,9 @@ const fonts = ['Arial', 'Georgia', 'Impact', 'Courier New', 'Trebuchet MS', 'Ver
 const canvasEl = ref<HTMLCanvasElement>();
 const q = ref('');
 const icons = ref<Icon[]>([]);
+const kinds = ['All', 'SVG', 'PNG'] as const;
+const kind = ref<(typeof kinds)[number]>('All');
+const shown = computed(() => (kind.value === 'All' ? icons.value : icons.value.filter((i) => i.svg === (kind.value === 'SVG'))));
 const next = ref<string | null>(null);
 const count = ref(0);
 const color = ref('#000000');
@@ -96,10 +99,16 @@ const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-
       <form class="mb-3" @submit.prevent="search()">
         <input v-model="q" type="search" aria-label="Search icons" placeholder="Search icons" class="w-full rounded border border-gray-300 px-2 py-1" />
       </form>
+      <div role="radiogroup" aria-label="Show" class="mb-3 flex text-sm">
+        <label v-for="k in kinds" :key="k" class="flex-1 cursor-pointer border border-gray-300 px-2 py-1 text-center has-[:checked]:bg-gray-800 has-[:checked]:text-white has-[:focus-visible]:ring-2">
+          <input v-model="kind" type="radio" name="kind" :value="k" class="sr-only" />{{ k }}
+        </label>
+      </div>
       <p v-if="loading" role="status" class="mb-2 text-sm text-gray-500">Loading…</p>
       <p v-if="error" role="alert" class="mb-2 text-sm text-red-600">{{ error }}</p>
       <div class="grid flex-1 grid-cols-4 content-start gap-1 overflow-y-auto">
-        <button v-for="i in icons" :key="i.id" type="button" :title="i.attribution" class="relative rounded border border-gray-200 p-1 hover:bg-gray-100" @click="add(i)">
+        <p v-if="icons.length && !shown.length && kind !== 'All'" class="col-span-4 text-sm text-gray-500">No {{ kind }} results loaded - try Load more</p>
+        <button v-for="i in shown":key="i.id" type="button" :title="i.attribution" class="relative rounded border border-gray-200 p-1 hover:bg-gray-100" @click="add(i)">
           <img :src="i.thumb" :alt="i.attribution" class="h-full w-full object-contain" />
           <span data-testid="kind" aria-hidden="true" :class="['absolute right-0 top-0 rounded-bl px-1 text-[10px] font-semibold leading-tight text-white', i.svg ? 'bg-emerald-600' : 'bg-amber-600']">{{ i.svg ? 'SVG' : 'PNG' }}</span>
         </button>
