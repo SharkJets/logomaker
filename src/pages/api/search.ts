@@ -20,7 +20,7 @@ export const GET: APIRoute = async ({ url }) => {
   try {
     const d = await tnpGet('/v2/icon', params);
     return json({
-      icons: (d.icons ?? []).map((i: any) => ({ id: String(i.id), thumb: i.thumbnail_url, attribution: i.attribution })),
+      icons: (d.icons ?? []).map((i: any) => ({ id: String(i.id), thumb: i.thumbnail_url, attribution: i.attribution, svg: !!i.icon_url })),
       next: d.next_page ?? null,
     });
   } catch (e: any) {

@@ -47,7 +47,12 @@ describe('search', () => {
     mockUpstream(searchResp);
     const r = await call(search, 'http://x/api/search?q=cat');
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ icons: [{ id: '123', thumb: PNG_URL, attribution: 'Cat by Ann from Noun Project' }], next: 'abc' });
+    expect(await r.json()).toEqual({ icons: [{ id: '123', thumb: PNG_URL, attribution: 'Cat by Ann from Noun Project', svg: true }], next: 'abc' });
+  });
+  it('test_search_svg_flag', async () => {
+    mockUpstream({ icons: [{ id: '1', thumbnail_url: PNG_URL, icon_url: SVG_URL, attribution: 'a' }, { id: '2', thumbnail_url: PNG_URL, attribution: 'b' }] });
+    const j = await (await call(search, 'http://x/api/search?q=cat')).json();
+    expect(j.icons.map((i: any) => i.svg)).toEqual([true, false]);
   });
   it('400 missing q', async () => {
     const r = await call(search, 'http://x/api/search');
