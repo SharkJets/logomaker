@@ -1,4 +1,4 @@
-import { Canvas, loadSVGFromString, util, FabricImage, IText, filters, Group, ActiveSelection, Point } from 'fabric';
+import { Canvas, loadSVGFromString, util, FabricImage, IText, filters, Group, ActiveSelection, Point, Rect, Circle, Triangle, Polygon, Line } from 'fabric';
 import { createHistory } from './history';
 
 export type Editor = ReturnType<typeof createEditor>;
@@ -46,10 +46,14 @@ export function createEditor(el: HTMLCanvasElement) {
   ['object:moving', 'object:scaling', 'object:rotating', 'object:modified', 'text:changed'].forEach((ev) => canvas.on(ev as any, syncAll));
   const batch = (f: () => void) => { restoring = true; try { f(); } finally { restoring = false; } changed(); };
   const copy = async (o: any) => {
-    if (!(o instanceof FabricImage)) return o.clone();
-    const t = new FabricImage(o.getElement()); // clone() would reload the (possibly revoked) blob url
-    t.filters = o.filters.slice();
-    if (t.filters.length) t.applyFilters();
+    let t: any;
+    if (!(o instanceof FabricImage)) t = await o.clone();
+    else {
+      t = new FabricImage(o.getElement()); // clone() would reload the (possibly revoked) blob url
+      t.filters = o.filters.slice();
+      if (t.filters.length) t.applyFilters();
+    }
+    if (o.clipPath) { t.clipPath = await o.clipPath.clone(); sync(o.clipPath, t.clipPath); } // mirrored mask
     return t;
   };
   const withPartners = (os: any[]) => [...new Set([...os, ...os.map(partner).filter(Boolean)])];
@@ -74,6 +78,29 @@ export function createEditor(el: HTMLCanvasElement) {
     cb();
   };
   const active = () => canvas.getActiveObject() as any;
+  let onSel = () => {};
+  ['selection:created', 'selection:updated', 'selection:cleared'].forEach((ev) => canvas.on(ev as any, () => onSel()));
+  // shapes are recognised by class; ponytail: an imported SVG that is a single <rect>/<circle> also counts as a shape
+  const isShape = (o: any) => [Rect, Circle, Triangle, Polygon, Line].some((C) => o instanceof C);
+  // the 2-object selection to mask: the topmost shape masks the other object
+  const maskPair = () => {
+    const s = active();
+    if (!(s instanceof ActiveSelection) || s.getObjects().length !== 2) return;
+    const all = canvas.getObjects();
+    const shape = s.getObjects().filter(isShape).sort((a: any, b: any) => all.indexOf(b) - all.indexOf(a))[0];
+    return shape && { shape, target: s.getObjects().find((o: any) => o !== shape) };
+  };
+  const star = Array.from({ length: 10 }, (_, i) => {
+    const r = i % 2 ? 30 : 75, a = (i * Math.PI) / 5 - Math.PI / 2;
+    return { x: 75 + r * Math.cos(a), y: 75 + r * Math.sin(a) };
+  });
+  const shapes = {
+    square: () => new Rect({ width: 150, height: 150, fill: '#111111' }),
+    circle: () => new Circle({ radius: 75, fill: '#111111' }),
+    triangle: () => new Triangle({ width: 150, height: 150, fill: '#111111' }),
+    star: () => new Polygon(star, { fill: '#111111' }),
+    line: () => new Line([0, 0, 150, 0], { stroke: '#111111', strokeWidth: 8 }),
+  };
   const paint = (o: any, color: string) => {
     if (o instanceof Group) o.getObjects().forEach((c: any) => paint(c, color));
     else if (o instanceof FabricImage) {
@@ -99,6 +126,49 @@ export function createEditor(el: HTMLCanvasElement) {
       const mk = () => new IText(text, { fontFamily: font, fontSize: 48, fill: '#000000' });
       place(mk(), mirror ? mk() : undefined);
     },
+    addShape(kind: keyof typeof shapes) {
+      place(shapes[kind](), mirror ? shapes[kind]() : undefined);
+    },
+    canMask: () => !!maskPair(),
+    async mask(mode: 'clip' | 'cut') {
+      const m = maskPair();
+      if (!m) return;
+      const { shape, target } = m;
+      const tp = partner(target);
+      canvas.discardActiveObject(); // members get absolute coordinates back
+      const twin = tp && (await shape.clone());
+      if (twin) sync(shape, twin);
+      const sp = partner(shape);
+      restoring = true;
+      try {
+        [[target, shape], [tp, twin]].forEach(([t, s]) => {
+          if (!t) return;
+          s.set({ absolutePositioned: true, inverted: mode === 'cut' });
+          t.clipPath = s; t.dirty = true;
+        });
+        canvas.remove(shape);
+        if (tp && sp) canvas.remove(sp);
+      } finally { restoring = false; }
+      canvas.setActiveObject(target);
+      changed();
+    },
+    canUnmask: () => !!active()?.clipPath,
+    unmask() {
+      const o = active();
+      if (!o?.clipPath) return;
+      restoring = true;
+      try {
+        const back = [o, partner(o)].filter((x) => x?.clipPath).map((x) => {
+          const s = x.clipPath;
+          x.clipPath = undefined; x.dirty = true;
+          s.set({ absolutePositioned: false, inverted: false }); s.setCoords();
+          canvas.add(s);
+          return s;
+        });
+        if (back.length === 2) link(back[0], back[1]);
+      } finally { restoring = false; }
+      changed();
+    },
     setColor(hex: string) {
       const o = active();
       if (!o) return;
@@ -117,6 +187,7 @@ export function createEditor(el: HTMLCanvasElement) {
       if (!o) return;
       const c = await o.clone();
       c.set({ left: o.left + 20, top: o.top + 20 });
+      if (c.clipPath) c.clipPath.set({ left: c.clipPath.left + 20, top: c.clipPath.top + 20 }); // absolute mask moves with the copy
       if (mirror) {
         const t = await copy(c);
         link(c, t); c.setCoords(); sync(c, t);
@@ -152,9 +223,33 @@ export function createEditor(el: HTMLCanvasElement) {
     canvas,
     undo() { return (q = q.then(() => restore(history.undo()))); },
     redo() { return (q = q.then(() => restore(history.redo()))); },
-    exportSVG: () => canvas.toSVG(),
+    exportSVG() {
+      // SVG <clipPath> cannot invert, so "cut" clips are exported as <mask> (white rect + black shape)
+      const cuts = canvas.getObjects().map((o: any) => o.clipPath).filter((c: any) => c?.inverted);
+      const saved = cuts.map((c: any) => ({ fill: c.fill, stroke: c.stroke, f: c.toClipPathSVG }));
+      cuts.forEach((c: any, i: number) => {
+        if (c.fill) c.fill = '#000000';
+        if (c.stroke) c.stroke = '#000000';
+        c.toClipPathSVG = (r?: any) => '<!--cut-->' + saved[i].f.call(c, r);
+      });
+      let svg: string;
+      try { svg = canvas.toSVG(); } finally {
+        cuts.forEach((c: any, i: number) => { c.fill = saved[i].fill; c.stroke = saved[i].stroke; c.toClipPathSVG = saved[i].f; });
+      }
+      const ids = new Set<string>();
+      const { width, height } = canvas;
+      return svg
+        .replace(/<clipPath id="([^"]+)" >\n<!--cut-->([\s\S]*?)<\/clipPath>/g, (_, id, body) => {
+          ids.add(id);
+          return `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}">
+<rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>
+${body}</mask>`;
+        })
+        .replace(/clip-path="url\(#([^)]+)\)"/g, (m, id) => (ids.has(id) ? `mask="url(#${id})"` : m));
+    },
     exportPNG: () => canvas.toDataURL({ format: 'png', multiplier: 2 }),
     count: () => canvas.getObjects().length,
     onChange(f: () => void) { cb = f; },
+    onSelect(f: () => void) { onSel = f; },
   };
 }

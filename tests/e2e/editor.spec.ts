@@ -2,14 +2,39 @@ import { test, expect } from '@playwright/test';
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h5v5H0z"/><path d="M5 5h5v5H5z"/></svg>';
 
-async function run<T>(page: any, fn: (e: any) => Promise<T>): Promise<T> {
-  return page.evaluate(async ([src, SVG]: [string, string]) => {
+// 200x200 black square: placed unscaled, centred, bbox 200..400
+const SQ = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><path d="M0 0h200v200H0z"/></svg>';
+
+async function run<T>(page: any, fn: (e: any, SVG: string, H: any) => Promise<T>): Promise<T> {
+  return page.evaluate(async ([src, SVG, SQ]: [string, string, string]) => {
     const { createEditor } = await import('/src/lib/editor.ts');
     const c = document.createElement('canvas');
     document.body.append(c);
     const e = createEditor(c);
-    return await (new Function('e', 'SVG', `return (${src})(e, SVG)`) as any)(e, SVG);
-  }, [fn.toString(), SVG]);
+    // H.sel: select objects; H.px: rgba at canvas coords (x, y) of a png/svg url
+    const H = {
+      SQ,
+      sel: async (...os: any[]) => {
+        const url = performance.getEntriesByType('resource').map((x) => x.name).find((n) => /deps\/fabric\.js/.test(n))!;
+        const { ActiveSelection } = await import(url);
+        const s = new ActiveSelection(os, { canvas: e.canvas });
+        e.canvas.setActiveObject(s);
+        return s;
+      },
+      px: (url: string, x: number, y: number) => new Promise<number[]>((res, rej) => {
+        const i = new Image();
+        i.onerror = () => rej(new Error('image failed'));
+        i.onload = () => {
+          const c = document.createElement('canvas'); c.width = i.width; c.height = i.height;
+          const g = c.getContext('2d')!; g.drawImage(i, 0, 0);
+          const k = i.width / 600;
+          res(Array.from(g.getImageData(Math.round(x * k), Math.round(y * k), 1, 1).data));
+        };
+        i.src = url;
+      }),
+    };
+    return await (new Function('e', 'SVG', 'H', `return (${src})(e, SVG, H)`) as any)(e, SVG, H);
+  }, [fn.toString(), SVG, SQ]);
 }
 
 test.beforeEach(async ({ page }) => { await page.goto("/"); await page.waitForLoadState("networkidle"); });
@@ -204,4 +229,130 @@ test('test_mirror_image_after_blob_revoked', async ({ page }) => {
     return e.count();
   });
   expect(n).toBe(2);
+});
+
+// shapes + masking. Icon bbox is 200..400; the circle shape is centred with radius 75, so (205,205) is outside it.
+const isBg = (p: number[]) => p[0] > 240 && p[1] > 240 && p[2] > 240;
+const isInk = (p: number[]) => p[0] < 20 && p[1] < 20 && p[2] < 20;
+
+test('test_add_shapes', async ({ page }) => {
+  const r = await run(page, async (e: any) => {
+    const counts: number[] = [];
+    for (const k of ['square', 'circle', 'triangle', 'star', 'line']) { e.addShape(k); counts.push(e.count()); }
+    return counts;
+  });
+  expect(r).toEqual([1, 2, 3, 4, 5]);
+});
+
+test('test_mask_clip', async ({ page }) => {
+  const r = await run(page, async (e: any, _: string, H: any) => {
+    await e.addSvg(H.SQ); e.addShape('circle');
+    const [a, b] = e.canvas.getObjects();
+    await H.sel(a, b);
+    const can = e.canMask(); await e.mask('clip');
+    const png = e.exportPNG();
+    const c = e.canvas.getObjects()[0].clipPath;
+    return { can, n: e.count(), has: !!c, inv: !!c.inverted, abs: c.absolutePositioned, corner: await H.px(png, 205, 205), mid: await H.px(png, 300, 300) };
+  });
+  expect(r).toMatchObject({ can: true, n: 1, has: true, inv: false, abs: true });
+  expect(isBg(r.corner)).toBe(true); expect(isInk(r.mid)).toBe(true);
+});
+
+test('test_mask_cut', async ({ page }) => {
+  const r = await run(page, async (e: any, _: string, H: any) => {
+    await e.addSvg(H.SQ); e.addShape('circle');
+    const [a, b] = e.canvas.getObjects();
+    await H.sel(a, b); await e.mask('cut');
+    const png = e.exportPNG();
+    return { n: e.count(), inv: e.canvas.getObjects()[0].clipPath.inverted, corner: await H.px(png, 205, 205), mid: await H.px(png, 300, 300) };
+  });
+  expect(r).toMatchObject({ n: 1, inv: true });
+  expect(isInk(r.corner)).toBe(true); expect(isBg(r.mid)).toBe(true);
+});
+
+test('test_mask_needs_a_pair_with_a_shape', async ({ page }) => {
+  const r = await run(page, async (e: any, _: string, H: any) => {
+    await e.addSvg(H.SQ); await e.addSvg(H.SQ);
+    const [a, b] = e.canvas.getObjects();
+    const none = e.canMask();
+    await H.sel(a, b); const noShape = e.canMask(); await e.mask('clip');
+    return [none, noShape, e.count()];
+  });
+  expect(r).toEqual([false, false, 2]);
+});
+
+test('test_mask_undo', async ({ page }) => {
+  const r = await run(page, async (e: any, _: string, H: any) => {
+    await e.addSvg(H.SQ); e.addShape('circle');
+    const [a, b] = e.canvas.getObjects();
+    await H.sel(a, b); await e.mask('cut');
+    await e.undo();
+    const undone = [e.count(), e.canvas.getObjects().some((o: any) => o.clipPath)];
+    await e.redo();
+    const c = e.canvas.getObjects()[0].clipPath;
+    const png = e.exportPNG();
+    return { undone, n: e.count(), inv: c?.inverted, abs: c?.absolutePositioned, mid: await H.px(png, 300, 300) };
+  });
+  expect(r.undone).toEqual([2, false]);
+  expect(r).toMatchObject({ n: 1, inv: true, abs: true });
+  expect(isBg(r.mid)).toBe(true);
+});
+
+test('test_unmask', async ({ page }) => {
+  const r = await run(page, async (e: any, _: string, H: any) => {
+    await e.addSvg(H.SQ); e.addShape('circle');
+    const [a, b] = e.canvas.getObjects();
+    await H.sel(a, b); await e.mask('clip');
+    const can = e.canUnmask(); e.unmask();
+    const [, s] = e.canvas.getObjects();
+    const after = [e.count(), e.canvas.getObjects().some((o: any) => o.clipPath), e.canUnmask(), s.getCenterPoint().x, s.getCenterPoint().y];
+    await e.undo();
+    return { can, after, undone: e.count() };
+  });
+  expect(r.can).toBe(true);
+  expect(r.after.slice(0, 3)).toEqual([2, false, false]);
+  expect(r.after[3]).toBeCloseTo(300); expect(r.after[4]).toBeCloseTo(300);
+  expect(r.undone).toBe(1);
+});
+
+test('test_cut_svg_export', async ({ page }) => {
+  const r = await run(page, async (e: any, _: string, H: any) => {
+    await e.addSvg(H.SQ); e.addShape('circle');
+    const [a, b] = e.canvas.getObjects();
+    await H.sel(a, b); await e.mask('cut');
+    const svg = e.exportSVG();
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const again = e.exportSVG(); // export must not leave the clipPath patched
+    return { mask: svg.includes('<mask'), clip: svg.includes('<clipPath'), same: again.replace(/\d+/g, '') === svg.replace(/\d+/g, ''), hole: await H.px(url, 300, 300), corner: await H.px(url, 205, 205), still: e.canvas.getObjects()[0].clipPath.inverted };
+  });
+  expect(r).toMatchObject({ mask: true, clip: false, same: true, still: true });
+  expect(isBg(r.hole)).toBe(true); expect(isInk(r.corner)).toBe(true);
+});
+
+test('test_clip_svg_export_keeps_clippath', async ({ page }) => {
+  const r = await run(page, async (e: any, _: string, H: any) => {
+    await e.addSvg(H.SQ); e.addShape('circle');
+    const [a, b] = e.canvas.getObjects();
+    await H.sel(a, b); await e.mask('clip');
+    const svg = e.exportSVG();
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    return { mask: svg.includes('<mask'), clip: svg.includes('<clipPath'), mid: await H.px(url, 300, 300), corner: await H.px(url, 205, 205) };
+  });
+  expect(r).toMatchObject({ mask: false, clip: true });
+  expect(isInk(r.mid)).toBe(true); expect(isBg(r.corner)).toBe(true);
+});
+
+test('test_mask_mirror_and_duplicate', async ({ page }) => {
+  const r = await run(page, async (e: any, _: string, H: any) => {
+    await e.setMirror(true); await e.addSvg(H.SQ); e.addShape('circle');
+    const [a, , c] = e.canvas.getObjects(); // icon, twin, circle, circle twin
+    await H.sel(a, c); await e.mask('clip');
+    const [i, t] = e.canvas.getObjects();
+    const out = { n: e.count(), sum: i.clipPath.getCenterPoint().x + t.clipPath.getCenterPoint().x, twinClip: !!t.clipPath };
+    e.canvas.setActiveObject(i); await e.duplicate();
+    const [, , d] = e.canvas.getObjects();
+    return { ...out, n2: e.count(), dx: d.clipPath.getCenterPoint().x - i.clipPath.getCenterPoint().x, left: d.left - i.left };
+  });
+  expect(r).toMatchObject({ n: 2, twinClip: true, n2: 4 });
+  expect(r.sum).toBeCloseTo(600); expect(r.dx).toBeCloseTo(20); expect(r.left).toBeCloseTo(20);
 });
