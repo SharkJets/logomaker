@@ -2,7 +2,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import type { Editor } from '../lib/editor';
 
-type Icon = { id: string; thumb: string; attribution: string };
+type Icon = { id: string; thumb: string; attribution: string; svg: boolean };
 const fonts = ['Arial', 'Georgia', 'Impact', 'Courier New', 'Trebuchet MS', 'Verdana'];
 
 const canvasEl = ref<HTMLCanvasElement>();
@@ -99,8 +99,9 @@ const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-
       <p v-if="loading" role="status" class="mb-2 text-sm text-gray-500">Loading…</p>
       <p v-if="error" role="alert" class="mb-2 text-sm text-red-600">{{ error }}</p>
       <div class="grid flex-1 grid-cols-4 content-start gap-1 overflow-y-auto">
-        <button v-for="i in icons" :key="i.id" type="button" :title="i.attribution" class="rounded border border-gray-200 p-1 hover:bg-gray-100" @click="add(i)">
+        <button v-for="i in icons" :key="i.id" type="button" :title="i.attribution" class="relative rounded border border-gray-200 p-1 hover:bg-gray-100" @click="add(i)">
           <img :src="i.thumb" :alt="i.attribution" class="h-full w-full object-contain" />
+          <span data-testid="kind" aria-hidden="true" :class="['absolute right-0 top-0 rounded-bl px-1 text-[10px] font-semibold leading-tight text-white', i.svg ? 'bg-emerald-600' : 'bg-amber-600']">{{ i.svg ? 'SVG' : 'PNG' }}</span>
         </button>
       </div>
       <button v-if="next" type="button" :class="[btn, 'mt-2']" @click="search(true)">Load more</button>

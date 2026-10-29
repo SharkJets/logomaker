@@ -9,7 +9,7 @@ async function setup(page: Page, opts: { attribution?: string; next?: string | n
   const urls: string[] = [];
   await page.route('**/api/search*', (r) => {
     urls.push(r.request().url());
-    r.fulfill({ json: { icons: [{ id: opts.png ? '2' : '1', thumb: THUMB, attribution: opts.attribution ?? 'Cat by Ann' }], next: opts.next ?? null } });
+    r.fulfill({ json: { icons: [{ id: opts.png ? '2' : '1', thumb: THUMB, attribution: opts.attribution ?? 'Cat by Ann', svg: !opts.png }], next: opts.next ?? null } });
   });
   await page.route('**/api/icon/*', (r) =>
     opts.png ? r.fulfill({ contentType: 'image/png', body: PNG }) : r.fulfill({ contentType: 'image/svg+xml', body: SVG }));
@@ -89,7 +89,19 @@ test('test_attribution_escaped', async ({ page }) => {
   expect(dialog).toBe(false);
 });
 
-test('test_png_fallback_icon', async ({ page }) => {
+test('test_result_kind_badge', async ({ page }) => {
+  await page.route('**/api/search*', (r) => r.fulfill({ json: { icons: [
+    { id: '1', thumb: THUMB, attribution: 'A', svg: true },
+    { id: '2', thumb: THUMB, attribution: 'B', svg: false },
+  ], next: null } }));
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.getByLabel('Search icons').fill('cat');
+  await page.getByLabel('Search icons').press('Enter');
+  await expect(page.getByTestId('kind')).toHaveText(['SVG', 'PNG']);
+});
+
+test('test_png_fallback_icon',async ({ page }) => {
   await setup(page, { png: true });
   await addIcon(page);
 });
