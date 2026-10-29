@@ -83,6 +83,19 @@ describe('search', () => {
     if (REAL) expect(String(fetchMock.mock.calls[0][0])).toContain('next_page=abc');
     else expect(tnpGet.mock.calls[0][1]).toMatchObject({ next_page: 'abc' });
   });
+  it('test_search_pd_flag', async () => {
+    mockUpstream(searchResp);
+    await call(search, 'http://x/api/search?q=skull&pd=1');
+    if (REAL) expect(String(fetchMock.mock.calls[0][0])).toContain('limit_to_public_domain=1');
+    else expect(tnpGet.mock.calls[0][1]).toMatchObject({ limit_to_public_domain: '1' });
+    await call(search, 'http://x/api/search?q=skull');
+    await call(search, 'http://x/api/search?q=skull&pd=0');
+    if (REAL) expect(String(fetchMock.mock.calls[1][0])).not.toContain('limit_to_public_domain');
+    else {
+      expect(tnpGet.mock.calls[1][1]).not.toHaveProperty('limit_to_public_domain');
+      expect(tnpGet.mock.calls[2][1]).not.toHaveProperty('limit_to_public_domain');
+    }
+  });
   it('test_upstream_error_502', async () => {
     mockUpstreamError(403);
     const r = await call(search, 'http://x/api/search?q=cat');
