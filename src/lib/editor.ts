@@ -8,6 +8,7 @@ export function createEditor(el: HTMLCanvasElement) {
   const history = createHistory<string>();
   const snap = () => JSON.stringify(canvas.toJSON());
   let restoring = false;
+  let q: Promise<void> = Promise.resolve();
   let cb = () => {};
   const changed = () => {
     if (restoring) return;
@@ -22,8 +23,8 @@ export function createEditor(el: HTMLCanvasElement) {
   const place = (o: any) => {
     const s = Math.min(1, 200 / Math.max(o.width * (o.scaleX || 1), o.height * (o.scaleY || 1)));
     o.scale((o.scaleX || 1) * s);
-    canvas.add(o);
     canvas.centerObject(o);
+    canvas.add(o);
     o.setCoords();
     canvas.setActiveObject(o);
     canvas.requestRenderAll();
@@ -40,7 +41,10 @@ export function createEditor(el: HTMLCanvasElement) {
     else if (o instanceof FabricImage) {
       o.filters = [new filters.BlendColor({ color, mode: 'tint', alpha: 1 })];
       o.applyFilters();
-    } else if (o.fill) o.set('fill', color);
+    } else {
+      if (o.fill && o.fill !== 'none') o.set('fill', color);
+      if (o.stroke && o.stroke !== 'none') o.set('stroke', color);
+    }
   };
 
   return {
@@ -80,11 +84,14 @@ export function createEditor(el: HTMLCanvasElement) {
     flip() { const o = active(); if (o) { o.set('flipX', !o.flipX); canvas.fire('object:modified', { target: o } as any); canvas.requestRenderAll(); } },
     remove() {
       const os = canvas.getActiveObjects();
+      if (!os.length) return;
       canvas.discardActiveObject();
-      os.forEach((o) => canvas.remove(o));
+      restoring = true;
+      try { os.forEach((o) => canvas.remove(o)); } finally { restoring = false; }
+      changed();
     },
-    async undo() { await restore(history.undo()); },
-    async redo() { await restore(history.redo()); },
+    undo() { return (q = q.then(() => restore(history.undo()))); },
+    redo() { return (q = q.then(() => restore(history.redo()))); },
     exportSVG: () => canvas.toSVG(),
     exportPNG: () => canvas.toDataURL({ format: 'png', multiplier: 2 }),
     count: () => canvas.getObjects().length,

@@ -65,3 +65,21 @@ test('test_remove', async ({ page }) => {
   const n = await run(page, async (e: any, SVG: string) => { await e.addSvg(SVG); e.remove(); return e.count(); });
   expect(n).toBe(0);
 });
+
+test('test_rapid_undo_serialized', async ({ page }) => {
+  const r = await run(page, async (e: any, SVG: string) => {
+    await e.addSvg(SVG); await e.addSvg(SVG);
+    await Promise.all([e.undo(), e.undo()]);
+    const a = e.count(); await e.redo(); await e.redo();
+    return [a, e.count()];
+  });
+  expect(r).toEqual([0, 2]);
+});
+
+test('test_remove_undo_restores', async ({ page }) => {
+  const r = await run(page, async (e: any, SVG: string) => {
+    await e.addSvg(SVG); e.remove(); const a = e.count();
+    await e.undo(); return [a, e.count()];
+  });
+  expect(r).toEqual([0, 1]);
+});
