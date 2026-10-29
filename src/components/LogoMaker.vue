@@ -13,6 +13,7 @@ const kind = ref<(typeof kinds)[number]>('All');
 const shown = computed(() => (kind.value === 'All' ? icons.value : icons.value.filter((i) => i.svg === (kind.value === 'SVG'))));
 const next = ref<string | null>(null);
 const count = ref(0);
+const mirror = ref(false);
 const color = ref('#000000');
 const font = ref(fonts[0]);
 const error = ref('');
@@ -75,6 +76,10 @@ async function exportSvg() {
 async function exportPng() {
   download((await editorP).exportPNG(), 'logo.png');
 }
+async function toggleMirror() {
+  mirror.value = !mirror.value;
+  await (await editorP).setMirror(mirror.value);
+}
 const run = async (f: (e: Editor) => unknown) => { await f(await editorP); };
 
 function onKey(ev: KeyboardEvent) {
@@ -132,6 +137,7 @@ const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-
         <button type="button" :class="btn" @click="run((e) => e.backward())">Back</button>
         <button type="button" :class="btn" @click="run((e) => e.duplicate())">Duplicate</button>
         <button type="button" :class="btn" @click="run((e) => e.flip())">Flip</button>
+        <button type="button" :class="[btn, mirror && 'bg-gray-800 text-white hover:bg-gray-700']" :aria-pressed="mirror" @click="toggleMirror">Mirror</button>
         <button type="button" :class="btn" @click="run((e) => e.remove())">Delete</button>
         <button type="button" :class="btn" @click="run((e) => e.undo())">Undo</button>
         <button type="button" :class="btn" @click="run((e) => e.redo())">Redo</button>
@@ -139,8 +145,9 @@ const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-
         <button type="button" :class="btn" @click="exportSvg">Export SVG</button>
         <span class="text-sm text-gray-600">Objects: <span data-testid="count">{{ count }}</span></span>
       </div>
-      <div class="shadow-lg">
+      <div class="relative shadow-lg">
         <canvas ref="canvasEl" />
+        <div v-if="mirror" data-testid="mirror-guide" aria-hidden="true" class="pointer-events-none absolute inset-y-0 left-1/2 border-l border-dashed border-gray-400/70" />
       </div>
     </section>
   </div>

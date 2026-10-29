@@ -188,3 +188,14 @@ test('test_no_horizontal_scroll', async ({ page }) => {
   await setup(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('test_mirror_button', async ({ page }) => {
+  await setup(page);
+  const m = page.getByRole('button', { name: 'Mirror' });
+  await expect(m).toHaveAttribute('aria-pressed', 'false');
+  await m.click();
+  await expect(m).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('mirror-guide')).toHaveCount(1);
+  await page.locator('aside button img').first().click();
+  await expect(count(page)).toHaveText('2');
+});
