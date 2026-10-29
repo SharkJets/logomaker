@@ -120,6 +120,18 @@ test('test_kind_filter', async ({ page }) => {
   await expect(page.getByTestId('kind')).toHaveCount(2);
 });
 
+test('test_svg_filter_requests_pd', async ({ page }) => {
+  const urls = await setup(page);
+  const g = page.getByRole('radiogroup', { name: 'Show' });
+  await g.getByText('SVG', { exact: true }).click();
+  await expect.poll(() => urls.length).toBe(2);
+  expect(urls[1]).toContain('pd=1');
+  await expect(page.getByText('SVG = public-domain icons (current TNP plan)')).toBeVisible();
+  await g.getByText('All', { exact: true }).click();
+  await expect.poll(() => urls.length).toBe(3);
+  expect(urls[2]).not.toContain('pd');
+});
+
 test('test_png_fallback_icon',async ({ page }) => {
   await setup(page, { png: true });
   await addIcon(page);

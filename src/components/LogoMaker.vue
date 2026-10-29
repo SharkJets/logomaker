@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import type { Editor } from '../lib/editor';
 
 type Icon = { id: string; thumb: string; attribution: string; svg: boolean };
@@ -21,11 +21,12 @@ let query = '';
 let resolveEditor!: (e: Editor) => void;
 const editorP = new Promise<Editor>((r) => (resolveEditor = r));
 
-async function search(more = false) {
+async function search(more = false, keep = false) {
   error.value = '';
-  if (!more) query = q.value.trim();
+  if (!more && !keep) query = q.value.trim();
   if (!query) return;
-  const u = `/api/search?q=${encodeURIComponent(query)}` + (more && next.value ? `&next=${encodeURIComponent(next.value)}` : '');
+  // TNP-PLAN: free key only serves SVG for public-domain icons. On a paid plan, drop pd=1 and fetch SVGs via /v2/icon/{id}/download?filetype=svg&color=000000 in api/icon/[id].ts.
+  const u = `/api/search?q=${encodeURIComponent(query)}` + (kind.value === 'SVG' ? '&pd=1' : '') + (more && next.value ? `&next=${encodeURIComponent(next.value)}` : '');
   loading.value = true;
   try {
     const r = await fetch(u);
@@ -39,6 +40,10 @@ async function search(more = false) {
     loading.value = false;
   }
 }
+
+watch(kind, (n, o) => {
+  if ((n === 'SVG') !== (o === 'SVG') && query) search(false, true);
+});
 
 async function add(i: Icon) {
   error.value = '';
@@ -104,6 +109,7 @@ const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-
           <input v-model="kind" type="radio" name="kind" :value="k" class="sr-only" />{{ k }}
         </label>
       </div>
+      <p v-if="kind === 'SVG'" class="mb-2 text-xs text-gray-500">SVG = public-domain icons (current TNP plan)</p>
       <p v-if="loading" role="status" class="mb-2 text-sm text-gray-500">Loading…</p>
       <p v-if="error" role="alert" class="mb-2 text-sm text-red-600">{{ error }}</p>
       <div class="grid flex-1 grid-cols-4 content-start gap-1 overflow-y-auto">
