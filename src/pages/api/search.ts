@@ -6,6 +6,11 @@ export const prerender = false;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+const fail = (e: any) =>
+  e?.message === 'server not configured'
+    ? json({ error: 'server not configured' }, 500)
+    : json({ error: /^upstream \d+$/.test(e?.message) ? e.message : 'upstream error' }, 502);
+
 export const GET: APIRoute = async ({ url }) => {
   const q = url.searchParams.get('q');
   if (!q) return json({ error: 'missing q' }, 400);
@@ -19,6 +24,6 @@ export const GET: APIRoute = async ({ url }) => {
       next: d.next_page ?? null,
     });
   } catch (e: any) {
-    return json({ error: String(e?.message ?? 'upstream error') }, 502);
+    return fail(e);
   }
 };

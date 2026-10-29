@@ -123,3 +123,39 @@ describe('icon', () => {
     expect(await r.json()).toEqual({ error: 'upstream 403' });
   });
 });
+
+describe('hardening', () => {
+  it('500 server not configured, no cause leaked', async () => {
+    tnpGet.mockRejectedValue(new Error('server not configured'));
+    const r = await call(search, 'http://x/api/search?q=cat');
+    expect(r.status).toBe(500);
+    expect(await r.json()).toEqual({ error: 'server not configured' });
+  });
+  it('unexpected error text is not echoed', async () => {
+    tnpGet.mockRejectedValue(new Error('connect ECONNREFUSED key=abc'));
+    const r = await call(icon, 'http://x/api/icon/1', { id: '1' });
+    expect(r.status).toBe(502);
+    expect(await r.json()).toEqual({ error: 'upstream error' });
+  });
+  it('icon sends nosniff + csp, does not follow redirects', async () => {
+    mockUpstream({ icon: { id: '1', icon_url: SVG_URL } }, { [SVG_URL]: new Response('<svg/>') });
+    const r = await call(icon, 'http://x/api/icon/1', { id: '1' });
+    expect(r.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(r.headers.get('content-security-policy')).toContain('sandbox');
+    expect(fetchMock.mock.calls.find((c) => String(c[0]) === SVG_URL)![1].redirect).toBe('manual');
+  });
+  it('redirecting CDN response is 502', async () => {
+    mockUpstream({ icon: { id: '1', icon_url: SVG_URL } }, { [SVG_URL]: new Response('', { status: 302 }) });
+    const r = await call(icon, 'http://x/api/icon/1', { id: '1' });
+    expect(r.status).toBe(502);
+  });
+  it('oversized icon rejected', async () => {
+    mockUpstream({ icon: { id: '1', icon_url: SVG_URL } }, { [SVG_URL]: new Response(new Uint8Array(2_000_001)) });
+    const r = await call(icon, 'http://x/api/icon/1', { id: '1' });
+    expect(r.status).toBe(502);
+  });
+  it('overlong id rejected', async () => {
+    const r = await call(icon, 'http://x/api/icon/1', { id: '1'.repeat(13) });
+    expect(r.status).toBe(400);
+  });
+});
