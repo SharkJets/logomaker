@@ -205,3 +205,15 @@ e.g. exportSVG() -> string starting '<?xml' and containing '<svg'
 
 ## Self-review
 Coverage, placeholders, types, graph, fields: checked.
+
+### T7 docker · Complexity 1 · Est. context 20k
+**Owns:** Dockerfile, .dockerignore, compose.yaml
+**Components:** 1
+**LOC owned:** 40
+**Tests:** slow
+**Kind:** mechanical
+**Model:** haiku
+**Est. time:** 1.5 min
+**Produces:** none
+**Test code:** `docker build -t logomaker .` exits 0, then `docker run -e THEN_KEY -e THEN_SEC -p 4321:4321 logomaker`, and `curl localhost:4321/api/search?q=star` returns 200 with icons.
+**Notes:** Multi-stage node:22-alpine with corepack pnpm. Build with `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm prune --prod`. The runtime stage copies dist, node_modules and package.json, runs as USER node with HOST=0.0.0.0 PORT=4321, and starts with `node dist/server/entry.mjs`. Creds stay runtime-only, never baked into the image.
