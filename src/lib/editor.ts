@@ -53,7 +53,7 @@ export function createEditor(el: HTMLCanvasElement) {
       t.filters = o.filters.slice();
       if (t.filters.length) t.applyFilters();
     }
-    if (o.clipPath) { t.clipPath = await o.clipPath.clone(); sync(o.clipPath, t.clipPath); } // mirrored mask
+    if (o.clipPath) t.clipPath = await o.clipPath.clone(); // clip is local to its object, so the twin's mirrored matrix already mirrors it
     return t;
   };
   const withPartners = (os: any[]) => [...new Set([...os, ...os.map(partner).filter(Boolean)])];
@@ -143,7 +143,8 @@ export function createEditor(el: HTMLCanvasElement) {
       try {
         [[target, shape], [tp, twin]].forEach(([t, s]) => {
           if (!t) return;
-          s.set({ absolutePositioned: true, inverted: mode === 'cut' });
+          util.applyTransformToObject(s, util.multiplyTransformMatrices(util.invertTransform(t.calcTransformMatrix()), s.calcTransformMatrix()));
+          s.set({ absolutePositioned: false, inverted: mode === 'cut' });
           t.clipPath = s; t.dirty = true;
         });
         canvas.remove(shape);
@@ -161,6 +162,7 @@ export function createEditor(el: HTMLCanvasElement) {
         const back = [o, partner(o)].filter((x) => x?.clipPath).map((x) => {
           const s = x.clipPath;
           x.clipPath = undefined; x.dirty = true;
+          util.applyTransformToObject(s, util.multiplyTransformMatrices(x.calcTransformMatrix(), s.calcTransformMatrix()));
           s.set({ absolutePositioned: false, inverted: false }); s.setCoords();
           canvas.add(s);
           return s;
@@ -187,7 +189,6 @@ export function createEditor(el: HTMLCanvasElement) {
       if (!o) return;
       const c = await o.clone();
       c.set({ left: o.left + 20, top: o.top + 20 });
-      if (c.clipPath) c.clipPath.set({ left: c.clipPath.left + 20, top: c.clipPath.top + 20 }); // absolute mask moves with the copy
       if (mirror) {
         const t = await copy(c);
         link(c, t); c.setCoords(); sync(c, t);
@@ -237,12 +238,13 @@ export function createEditor(el: HTMLCanvasElement) {
         cuts.forEach((c: any, i: number) => { c.fill = saved[i].fill; c.stroke = saved[i].stroke; c.toClipPathSVG = saved[i].f; });
       }
       const ids = new Set<string>();
-      const { width, height } = canvas;
+      // the mask lives in the object's local space (inside its transformed <g>), so the white rect/region must be huge, not canvas-sized
+      const B = 100000, box = `x="${-B}" y="${-B}" width="${2 * B}" height="${2 * B}"`;
       return svg
         .replace(/<clipPath id="([^"]+)" >\n<!--cut-->([\s\S]*?)<\/clipPath>/g, (_, id, body) => {
           ids.add(id);
-          return `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}">
-<rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>
+          return `<mask id="${id}" maskUnits="userSpaceOnUse" ${box}>
+<rect ${box} fill="#ffffff"/>
 ${body}</mask>`;
         })
         .replace(/clip-path="url\(#([^)]+)\)"/g, (m, id) => (ids.has(id) ? `mask="url(#${id})"` : m));
