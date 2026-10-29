@@ -1,0 +1,8 @@
+services:
+  logomaker:
+    build: .
+    ports: ["4321:4321"]
+    environment:
+      THEN_KEY: ${THEN_KEY}
+      THEN_SEC: ${THEN_SEC}
+    restart: unless-stopped
