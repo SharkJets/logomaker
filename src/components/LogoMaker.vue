@@ -14,6 +14,8 @@ const shown = computed(() => (kind.value === 'All' ? icons.value : icons.value.f
 const next = ref<string | null>(null);
 const count = ref(0);
 const mirror = ref(false);
+const canMask = ref(false);
+const canUnmask = ref(false);
 const color = ref('#000000');
 const font = ref(fonts[0]);
 const error = ref('');
@@ -94,13 +96,16 @@ function onKey(ev: KeyboardEvent) {
 onMounted(async () => {
   const { createEditor } = await import('../lib/editor');
   const ed = createEditor(canvasEl.value!);
-  ed.onChange(() => (count.value = ed.count()));
+  const refresh = () => { canMask.value = ed.canMask(); canUnmask.value = ed.canUnmask(); };
+  ed.onChange(() => { count.value = ed.count(); refresh(); });
+  ed.onSelect(refresh);
   resolveEditor(ed);
   window.addEventListener('keydown', onKey);
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
-const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-100';
+const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white';
+const shapes = ['square', 'circle', 'triangle', 'star', 'line'] as const;
 </script>
 
 <template>
@@ -139,6 +144,12 @@ const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-
         <button type="button" :class="btn" @click="run((e) => e.flip())">Flip</button>
         <button type="button" :class="[btn, mirror && 'bg-gray-800 text-white hover:bg-gray-700']" :aria-pressed="mirror" @click="toggleMirror">Mirror</button>
         <button type="button" :class="btn" @click="run((e) => e.remove())">Delete</button>
+        <div role="group" aria-label="Shapes" class="flex items-center gap-1">
+          <button v-for="k in shapes" :key="k" type="button" :class="[btn, 'capitalize']" :aria-label="`Add ${k}`" @click="run((e) => e.addShape(k))">{{ k }}</button>
+          <button type="button" :class="btn" :disabled="!canMask" @click="run((e) => e.mask('clip'))">Clip</button>
+          <button type="button" :class="btn" :disabled="!canMask" @click="run((e) => e.mask('cut'))">Cut out</button>
+          <button type="button" :class="btn" :disabled="!canUnmask" @click="run((e) => e.unmask())">Unmask</button>
+        </div>
         <button type="button" :class="btn" @click="run((e) => e.undo())">Undo</button>
         <button type="button" :class="btn" @click="run((e) => e.redo())">Redo</button>
         <button type="button" :class="btn" @click="exportPng">Export PNG</button>

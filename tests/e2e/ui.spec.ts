@@ -199,3 +199,36 @@ test('test_mirror_button', async ({ page }) => {
   await page.locator('aside button img').first().click();
   await expect(count(page)).toHaveText('2');
 });
+
+test('test_shape_buttons', async ({ page }) => {
+  await setup(page);
+  await page.getByRole('button', { name: 'Add circle' }).click();
+  await expect(count(page)).toHaveText('1');
+  for (const k of ['square', 'triangle', 'star', 'line']) await expect(page.getByRole('button', { name: `Add ${k}` })).toBeVisible();
+});
+
+test('test_clip_button_enabled_only_for_pair', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await setup(page);
+  const clip = page.getByRole('button', { name: 'Clip' }), cut = page.getByRole('button', { name: 'Cut out' }), un = page.getByRole('button', { name: 'Unmask' });
+  await expect(clip).toBeDisabled();
+  await addIcon(page);
+  await page.getByRole('button', { name: 'Add circle' }).click();
+  await expect(count(page)).toHaveText('2');
+  await expect(clip).toBeDisabled(); // only the circle is selected
+  const b = (await page.locator('canvas.upper-canvas').boundingBox())!;
+  await page.mouse.move(b.x + 5, b.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width - 5, b.y + b.height - 5, { steps: 5 });
+  await page.mouse.up();
+  await expect(clip).toBeEnabled();
+  await expect(cut).toBeEnabled();
+  await expect(un).toBeDisabled();
+  await clip.click();
+  await expect(count(page)).toHaveText('1');
+  await expect(clip).toBeDisabled();
+  await expect(un).toBeEnabled();
+  await un.click();
+  await expect(count(page)).toHaveText('2');
+  await expect(un).toBeDisabled();
+});
