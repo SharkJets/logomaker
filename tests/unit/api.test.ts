@@ -54,6 +54,23 @@ describe('search', () => {
     const j = await (await call(search, 'http://x/api/search?q=cat')).json();
     expect(j.icons.map((i: any) => i.svg)).toEqual([true, false]);
   });
+  it('test_search_real_shape_svg_only_public_domain', async () => {
+    // Live TNP shape (F-T2-2): CC-BY icons carry no icon_url; public-domain ones carry a signed svg_clean URL.
+    const PD_SVG = 'https://static.thenounproject.com/svg_clean/5713860.svg?Expires=1793280789&Signature=x~y&Key-Pair-Id=K';
+    const base = { permalink: '/icon/skull/', term: 'Skull', collections: [], tags: ['skull'], styles: [], creator: { name: 'A' } };
+    mockUpstream(
+      { icons: [
+        { ...base, attribution: 'Skull by Athok from Noun Project', id: '8506512', license_description: 'creative-commons-attribution', thumbnail_url: PNG_URL },
+        { ...base, attribution: 'Skull by S from Noun Project', id: '5713860', icon_url: PD_SVG, license_description: 'public-domain', thumbnail_url: PNG_URL },
+      ], generated_at: 'x', total: 2, next_page: 'n', usage_limits: {} },
+      { [PD_SVG]: new Response('<svg/>') },
+    );
+    const j = await (await call(search, 'http://x/api/search?q=skull')).json();
+    expect(j.icons.map((i: any) => i.svg)).toEqual([false, true]);
+    mockUpstream({ icon: { id: '5713860', icon_url: PD_SVG, license_description: 'public-domain', thumbnail_url: PNG_URL } }, { [PD_SVG]: new Response('<svg/>') });
+    const r = await call(icon, 'http://x/api/icon/5713860', { id: '5713860' });
+    expect(r.headers.get('content-type')).toBe('image/svg+xml');
+  });
   it('400 missing q', async () => {
     const r = await call(search, 'http://x/api/search');
     expect(r.status).toBe(400);
