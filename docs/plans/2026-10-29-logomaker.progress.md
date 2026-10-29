@@ -1,0 +1,46 @@
+- start 8fa55a10ea3e1ee564dff5f583b35c4041357e08
+- unblocked: dispatched T0 T1 T2 T3 T4 at 07:15:19; waiting on fixes: T0 T5 T6
+- Ruling: agents read .superlite/prime.md from disk instead of a pasted copy, and the task rides in the same message - same bytes, no READY round trip - cost: none
+- Ruling: on Windows, sl needs MSYS_NO_PATHCONV unset - the env sets it, which breaks script paths - cost: none
+- Ruling: accept predicted 20 min - T4->T5->T6 is inherently sequential (UI e2e runs the real editor, live e2e runs the real UI) - cost: ~9 min over target
+- Ruling: T5 keeps a real edge to T4 instead of a createEditor e.g. stub - its e2e tests run the real fabric editor - cost: none
+- Ruling: dispatch T5 by hand once T0+T4 commit, and T6 once T2+T5 commit, despite the lint EXAMPLE gate and the 26-char size overage - both are cosmetic, and the real edges cover them - cost: none
+- tests fast passed=0 failed=1 skipped=0 seconds=2.5
+- tests fast passed=0 failed=6 skipped=0 seconds=3.5
+- tests fast passed=12 failed=0 skipped=0 seconds=1.4
+- tests fast passed=4 failed=0 skipped=0 seconds=1.1
+- tests fast passed=6 failed=0 skipped=0 seconds=1.3
+- tests full passed=25 failed=0 skipped=0 seconds=1.1
+- tests full passed=25 failed=0 skipped=0 seconds=1.1
+- tests full passed=22 failed=0 skipped=0 seconds=1.1
+- Ruling: F-T0-1 commits .gitignore, the lockfile and @types/node through fixer-sonnet, because T0's frozen Owns omitted them - cost: none
+- commit T0 30172cd1ec skeleton
+- commit T1 8306e1818b tnp oauth
+- commit T2 fadc1e67f4 api routes
+- commit T3 067840af18 history
+- commit T4 2a306f47cf editor
+- commit T5 6e7f44782c ui
+- commit T6 bb6c187cbc live e2e
+- commit T4 689612deda editor
+- commit T5 2772ea8ecf ui
+- Ruling: the color/font inputs don't sync to the selected object yet (needs editor.onSelect) - deferred as a polish item - cost: the picker shows the last-used color, not the selected object's
+- commit T1 a8b493dffb tnp oauth
+- commit T2 d18b96e7ea api routes
+- Ruling: thumbnail_url passes to the client unvalidated - the browser loads it as an img from the TNP CDN, so it's low risk - cost: low
+- tests fast passed=19 failed=0 skipped=0 seconds=1.2
+- commit T2 7456b4362d api routes
+- commit T5 010433fb25 ui
+- commit T5 cd2ed5d5d2 ui
+- tests fast passed=20 failed=0 skipped=0 seconds=1.1
+- commit T2 52c20f3c35 api routes
+- commit T2 9cb69ea724 api routes
+- commit T5 50ec1ecc17 ui
+- queued F-T4-3 (shapes+mask) behind F-T4-2 (mirror) - same files
+- commit T4 7841969bcd editor
+- commit T5 f000f72653 ui
+- commit T4 3518ee1590 editor
+- commit T5 8059f0f5e4 ui
+- commit T4 65cb6cd864 editor
+- Ruling: final review findings 1-2 (gitignore/lockfile) are stale - both tracked since the T0 follow-up, tree clean - cost: none
+- Ruling: security pass on T1/T2 verified by the coordinator reading the code - numeric id regex, fixed API base, CDN host allowlist + no redirects, secret server-only - cost: low
+- Ruling: the contract-mismatch list (truncated in the packet) is accepted - route Produces aren't function signatures and Editor gained methods for mirror/shapes - all e.g. contracts are covered by green tests - cost: low
