@@ -93,3 +93,55 @@ test('test_png_fallback_icon', async ({ page }) => {
   await setup(page, { png: true });
   await addIcon(page);
 });
+
+test('test_png_url_revoked', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__made = []; (window as any).__rev = [];
+    const c = URL.createObjectURL.bind(URL), r = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (b: any) => { const u = c(b); (window as any).__made.push(u); return u; };
+    URL.revokeObjectURL = (u: string) => { (window as any).__rev.push(u); r(u); };
+  });
+  await setup(page, { png: true });
+  await addIcon(page);
+  const [made, rev] = await page.evaluate(() => [(window as any).__made, (window as any).__rev]);
+  expect(made.length).toBe(1);
+  expect(rev).toEqual(made);
+});
+
+test('test_search_error_and_loading', async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.route('**/api/search*', async (r) => { await gate; r.fulfill({ status: 502, json: { error: 'upstream down' } }); });
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.getByLabel('Search icons').fill('cat');
+  await page.getByLabel('Search icons').press('Enter');
+  await expect(page.getByRole('status')).toBeVisible();
+  release();
+  await expect(page.getByRole('alert')).toHaveText('upstream down');
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+test('test_empty_search_noop', async ({ page }) => {
+  const urls = await setup(page);
+  const n = urls.length;
+  await page.getByLabel('Search icons').fill('   ');
+  await page.getByLabel('Search icons').press('Enter');
+  await page.waitForTimeout(200);
+  expect(urls.length).toBe(n);
+});
+
+test('test_keys_ignored_in_input', async ({ page }) => {
+  await setup(page);
+  await addIcon(page);
+  await page.getByLabel('Search icons').fill('x');
+  await page.getByLabel('Search icons').press('Backspace');
+  await page.getByLabel('Search icons').press('Control+z');
+  await expect(count(page)).toHaveText('1');
+});
+
+test('test_no_horizontal_scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await setup(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

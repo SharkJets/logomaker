@@ -13,6 +13,7 @@ const count = ref(0);
 const color = ref('#000000');
 const font = ref(fonts[0]);
 const error = ref('');
+const loading = ref(false);
 let query = '';
 let resolveEditor!: (e: Editor) => void;
 const editorP = new Promise<Editor>((r) => (resolveEditor = r));
@@ -22,6 +23,7 @@ async function search(more = false) {
   if (!more) query = q.value.trim();
   if (!query) return;
   const u = `/api/search?q=${encodeURIComponent(query)}` + (more && next.value ? `&next=${encodeURIComponent(next.value)}` : '');
+  loading.value = true;
   try {
     const r = await fetch(u);
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `error ${r.status}`);
@@ -30,6 +32,8 @@ async function search(more = false) {
     next.value = d.next;
   } catch (e: any) {
     error.value = e.message;
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -40,7 +44,10 @@ async function add(i: Icon) {
     if (!r.ok) throw new Error(`icon error ${r.status}`);
     const ed = await editorP;
     if ((r.headers.get('content-type') || '').includes('image/svg+xml')) await ed.addSvg(await r.text());
-    else await ed.addImage(URL.createObjectURL(await r.blob()));
+    else {
+      const url = URL.createObjectURL(await r.blob());
+      try { await ed.addImage(url); } finally { URL.revokeObjectURL(url); }
+    }
   } catch (e: any) {
     error.value = e.message;
   }
@@ -89,6 +96,7 @@ const btn = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-
       <form class="mb-3" @submit.prevent="search()">
         <input v-model="q" type="search" aria-label="Search icons" placeholder="Search icons" class="w-full rounded border border-gray-300 px-2 py-1" />
       </form>
+      <p v-if="loading" role="status" class="mb-2 text-sm text-gray-500">Loading…</p>
       <p v-if="error" role="alert" class="mb-2 text-sm text-red-600">{{ error }}</p>
       <div class="grid flex-1 grid-cols-4 content-start gap-1 overflow-y-auto">
         <button v-for="i in icons" :key="i.id" type="button" :title="i.attribution" class="rounded border border-gray-200 p-1 hover:bg-gray-100" @click="add(i)">
